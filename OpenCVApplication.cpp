@@ -3,16 +3,18 @@
 
 #include "stdafx.h"
 #include "common.h"
-
+#include <stdio.h>
+#include <stdlib.h>
+using namespace std;
 
 void testOpenImage()
 {
 	char fname[MAX_PATH];
-	while(openFileDlg(fname))
+	while (openFileDlg(fname))
 	{
 		Mat src;
 		src = imread(fname);
-		imshow("opened image",src);
+		imshow("opened image", src);
 		waitKey();
 	}
 }
@@ -20,16 +22,16 @@ void testOpenImage()
 void testOpenImagesFld()
 {
 	char folderName[MAX_PATH];
-	if (openFolderDlg(folderName)==0)
+	if (openFolderDlg(folderName) == 0)
 		return;
 	char fname[MAX_PATH];
-	FileGetter fg(folderName,"bmp");
-	while(fg.getNextAbsFile(fname))
+	FileGetter fg(folderName, "bmp");
+	while (fg.getNextAbsFile(fname))
 	{
 		Mat src;
 		src = imread(fname);
-		imshow(fg.getFoundFileName(),src);
-		if (waitKey()==27) //ESC pressed
+		imshow(fg.getFoundFileName(), src);
+		if (waitKey() == 27) //ESC pressed
 			break;
 	}
 }
@@ -37,7 +39,7 @@ void testOpenImagesFld()
 void testColor2Gray()
 {
 	char fname[MAX_PATH];
-	while(openFileDlg(fname))
+	while (openFileDlg(fname))
 	{
 		Mat_<Vec3b> src = imread(fname, IMREAD_COLOR);
 
@@ -46,23 +48,112 @@ void testColor2Gray()
 
 		Mat_<uchar> dst(height, width);
 
-		for (int i=0; i<height; i++)
+		for (int i = 0; i < height; i++)
 		{
-			for (int j=0; j<width; j++)
+			for (int j = 0; j < width; j++)
 			{
-				Vec3b v3 = src(i,j);
+				Vec3b v3 = src(i, j);
 				uchar b = v3[0];
 				uchar g = v3[1];
 				uchar r = v3[2];
-				dst(i,j) = (r+g+b)/3;
+				dst(i, j) = (r + g + b) / 3;
 			}
 		}
-		
-		imshow("original image",src);
-		imshow("gray image",dst);
+
+		imshow("original image", src);
+		imshow("gray image", dst);
 		waitKey();
 	}
 }
+Mat_<Vec3b> convertIntToVec3b(Mat_<Vec3i> matrix) {
+	Mat_<Vec3b> result(matrix.rows, matrix.cols);
+	for (int i = 0; i < result.rows; i++)
+		for (int j = 0; j < result.cols; j++) {
+			for (int k = 0; k < 3; k++) {
+				int x = ((int)matrix[i][j][k]);
+				if (x < 0) {
+					x = 0;
+				}
+				else if (x > 255) {
+					x = 255;
+				}
+				result[i][j][k] = x;
+			}
+		}
+	return result;
+}
+
+Mat_<Vec3i> convertVec3bToInt(Mat_<Vec3b> matrix) {
+	Mat_<Vec3i> result(matrix.rows, matrix.cols);
+	for (int i = 0; i < result.rows; ++i) {
+		for (int j = 0; j < result.cols; ++j) {
+			for (int k = 0; k < 3; ++k) {
+				result[i][j][k] = (int)matrix[i][j][k];
+			}
+		}
+	}
+	return result;
+}
+
+vector<Mat_<Vec3b>> genGauss(Mat_<Vec3b> img, int levels) {
+
+	vector<Mat_<Vec3b>> gaussPyramid;
+	Mat_<Vec3b> level;
+
+	gaussPyramid.push_back(img);
+
+	for (int i = 0; i < levels; i++) {
+
+		pyrDown(gaussPyramid[i], level);
+		gaussPyramid.push_back(level);
+	}
+	return gaussPyramid;
+}
+
+vector<Mat_<Vec3i>> genLaplace(Mat_<Vec3b> src, int levels) {
+
+	vector<Mat_<Vec3i>> aux;
+	vector<Mat_<Vec3b>> gaussPyramid = genGauss(src, levels);
+	aux.push_back(convertVec3bToInt(gaussPyramid.back()));
+
+	for (int i = gaussPyramid.size() - 1; i >= 1; --i) {
+
+		Mat_<Vec3b> upperLevel;
+		pyrUp(gaussPyramid[i], upperLevel, Size(gaussPyramid[i - 1].cols, gaussPyramid[i - 1].rows));
+		aux.push_back(convertVec3bToInt(gaussPyramid[i - 1]) - convertVec3bToInt(upperLevel));
+	}
+	return aux;
+}
+
+Mat_<Vec3b> reconstructImgFromLapPyr(vector<Mat_<Vec3i>> lapPyr) {
+
+	Mat_<Vec3b> image = convertIntToVec3b(lapPyr[0]);
+	Mat_<Vec3b> layer;
+
+	for (int i = 1; i < lapPyr.size(); i++) {
+		pyrUp(image, layer, Size(lapPyr[i].cols, lapPyr[i].rows));
+		image = convertIntToVec3b(lapPyr[i] + convertVec3bToInt(layer));
+	}
+	return image;
+}
+
+
+float* compute_MAE(Mat_<Vec3b> firstImage, Mat_<Vec3b> secondImage) {
+
+	float* MAE = (float*)calloc(3, sizeof(float));
+	for (int i = 0; i < firstImage.rows; i++)
+		for (int j = 0; j < firstImage.cols; j++) {
+			MAE[0] = MAE[0] + abs(firstImage(i, j)[0] - secondImage(i, j)[0]);
+			MAE[1] = MAE[1] + abs(firstImage(i, j)[1] - secondImage(i, j)[1]);
+			MAE[2] = MAE[2] + abs(firstImage(i, j)[2] - secondImage(i, j)[2]);
+		}
+	MAE[0] = MAE[0] / (firstImage.rows * firstImage.cols);
+	MAE[1] = MAE[1] / (firstImage.rows * firstImage.cols);
+	MAE[2] = MAE[2] / (firstImage.rows * firstImage.cols);
+
+	return MAE;
+}
+
 
 
 int main()
@@ -70,28 +161,20 @@ int main()
 	int op;
 	do
 	{
+		int n;
 		system("cls");
 		destroyAllWindows();
 		printf("Menu:\n");
-		printf(" 1 - Basic image opening...\n");
-		printf(" 2 - Open BMP images from folder\n");
-		printf(" 3 - Color to Gray\n");
-		printf(" 0 - Exit\n\n");
+		printf(" 1 - Calculate n levels for Gaussian Pyramid .\n");
+		printf(" 2 - Calculate n levels for Laplace Pyramid .\n");
+		printf(" 3 - Reconstruct the image .\n");
+		printf(" 4 - Calculate the mean absolute error .\n");
 		printf("Option: ");
-		scanf("%d",&op);
+		scanf("%d", &op);
 		switch (op)
 		{
-			case 1:
-				testOpenImage();
-				break;
-			case 2:
-				testOpenImagesFld();
-				break;
-			case 3:
-				testColor2Gray();
-				break;
+
 		}
-	}
-	while (op!=0);
+	} while (op != 0);
 	return 0;
 }
