@@ -5,6 +5,7 @@
 #include "common.h"
 #include <stdio.h>
 #include <stdlib.h>
+
 using namespace std;
 
 void testOpenImage()
@@ -65,6 +66,7 @@ void testColor2Gray()
 		waitKey();
 	}
 }
+
 Mat_<Vec3b> convertIntToVec3b(Mat_<Vec3i> matrix) {
 	Mat_<Vec3b> result(matrix.rows, matrix.cols);
 	for (int i = 0; i < result.rows; i++)
@@ -109,20 +111,80 @@ vector<Mat_<Vec3b>> genGauss(Mat_<Vec3b> img, int levels) {
 	}
 	return gaussPyramid;
 }
+void testGauss(int noOfLayers) {
+	char fname[MAX_PATH];
+	while (openFileDlg(fname))
+	{
+		Mat_<Vec3b> src = imread(fname, IMREAD_COLOR);
+		std::vector<Mat_<Vec3b>> gaussianPyr = genGauss(src, noOfLayers);
+		for (int i = 0; i < gaussianPyr.size(); i++) {
+			std::string x = "gaussian pyr #";
+			x += std::to_string(i);
+			cv::resize(gaussianPyr[i], gaussianPyr[i], cv::Size(256, 256));
+			imshow(x, gaussianPyr[i]);
+
+		}
+
+		waitKey();
+	}
+}
 
 vector<Mat_<Vec3i>> genLaplace(Mat_<Vec3b> src, int levels) {
 
 	vector<Mat_<Vec3i>> aux;
 	vector<Mat_<Vec3b>> gaussPyramid = genGauss(src, levels);
-	aux.push_back(convertVec3bToInt(gaussPyramid.back()));
 
+	aux.push_back(convertVec3bToInt(gaussPyramid.back()));
 	for (int i = gaussPyramid.size() - 1; i >= 1; --i) {
+
+
 
 		Mat_<Vec3b> upperLevel;
 		pyrUp(gaussPyramid[i], upperLevel, Size(gaussPyramid[i - 1].cols, gaussPyramid[i - 1].rows));
 		aux.push_back(convertVec3bToInt(gaussPyramid[i - 1]) - convertVec3bToInt(upperLevel));
 	}
 	return aux;
+}
+void printLaplace(Mat_<Vec3i> laplaceImg, std::string text) {
+	Mat_<Vec3b> ret(laplaceImg.rows, laplaceImg.cols);
+	for (int i = 0; i < laplaceImg.rows; ++i) {
+		for (int j = 0; j < laplaceImg.cols; ++j) {
+			for (int k = 0; k < 3; ++k) {
+				int val = ((int)laplaceImg[i][j][k] + 128);
+				if (val > 255) {
+					val = 255;
+				}
+				else if (val < 0) {
+					val = 0;
+				}
+				ret[i][j][k] = (uchar)val;
+			}
+		}
+	}
+	cv::resize(ret, ret, cv::Size(256, 256));
+	imshow(text, ret);
+}
+void testLaplace(int layers) {
+	char fname[MAX_PATH];
+	while (openFileDlg(fname)) {
+		Mat src;
+		src = imread(fname, IMREAD_COLOR);
+		std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
+		Mat laplacian0 = convertIntToVec3b(laplacianPyr[0]);
+
+		cv::resize(laplacian0, laplacian0, cv::Size(256, 256));
+
+		imshow("lapace pyr #0", laplacian0);
+
+		for (int i = 1; i < laplacianPyr.size(); ++i) {
+			std::string x = "laplacian pyr #";
+			x += std::to_string(i);
+			printLaplace(laplacianPyr[i], x);
+			cv::resize(src, src, cv::Size(256, 256));
+		}
+
+		imshow("image", src);
+	}
 }
 
 Mat_<Vec3b> reconstructImgFromLapPyr(vector<Mat_<Vec3i>> lapPyr) {
@@ -136,7 +198,22 @@ Mat_<Vec3b> reconstructImgFromLapPyr(vector<Mat_<Vec3i>> lapPyr) {
 	}
 	return image;
 }
+void testReconstruction(int layers) {
+	char fname[MAX_PATH];
+	while (openFileDlg(fname)) {
+		Mat src;
+		src = imread(fname, IMREAD_COLOR);
 
+		std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
+		Mat_<Vec3b> rec = reconstructImgFromLapPyr(laplacianPyr);
+
+		imshow("Diference", (rec - src) * 10 + 128);
+
+		imshow("reconstructed", rec);
+		imshow("image", src);
+		waitKey(0);
+	}
+}
 
 float* compute_MAE(Mat_<Vec3b> firstImage, Mat_<Vec3b> secondImage) {
 
@@ -173,7 +250,21 @@ int main()
 		scanf("%d", &op);
 		switch (op)
 		{
-
+		case 1:
+			printf(" levels = ");
+			scanf("%d", &n);
+			testGauss(n);
+			break;
+		case 2:
+			printf(" levels = ");
+			scanf("%d", &n);
+			testLaplace(n);
+			break;
+		case 3:
+			printf(" levels = ");
+			scanf("%d", &n);
+			testReconstruction(n);
+			break;
 		}
 	} while (op != 0);
 	return 0;
