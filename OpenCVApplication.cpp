@@ -3,9 +3,12 @@
 
 #include "stdafx.h"
 #include "common.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include <random>
+#include <vector>
+#include <iostream>
+#include <opencv2/opencv.hpp>
 
+using namespace cv;
 using namespace std;
 
 void testOpenImage()
@@ -97,16 +100,16 @@ Mat_<Vec3i> convertVec3bToInt(Mat_<Vec3b> matrix) {
 	return result;
 }
 
-vector<Mat_<Vec3b>> genGauss(Mat_<Vec3b> img, int levels) { 
+vector<Mat_<Vec3b>> genGauss(Mat_<Vec3b> img, int levels) {
 
-	vector<Mat_<Vec3b>> gaussPyramid; 
+	vector<Mat_<Vec3b>> gaussPyramid;
 	Mat_<Vec3b> level;
 
 	gaussPyramid.push_back(img);
 
 	for (int i = 0; i < levels; i++) {
 
-		pyrDown(gaussPyramid[i], level); 
+		pyrDown(gaussPyramid[i], level);
 		gaussPyramid.push_back(level);
 	}
 	return gaussPyramid;
@@ -122,7 +125,7 @@ void testGauss(int noOfLayers) {
 			x += std::to_string(i);
 			cv::resize(gaussianPyr[i], gaussianPyr[i], cv::Size(256, 256));
 			imshow(x, gaussianPyr[i]);
-			
+
 		}
 
 		waitKey();
@@ -133,7 +136,7 @@ vector<Mat_<Vec3i>> genLaplace(Mat_<Vec3b> src, int levels) {
 
 	vector<Mat_<Vec3i>> aux;
 	vector<Mat_<Vec3b>> gaussPyramid = genGauss(src, levels);
-	
+
 	aux.push_back(convertVec3bToInt(gaussPyramid.back()));
 	for (int i = gaussPyramid.size() - 1; i >= 1; --i) {
 
@@ -166,25 +169,25 @@ void printLaplace(Mat_<Vec3i> laplaceImg, std::string text) {
 }
 void testLaplace(int layers) {
 	char fname[MAX_PATH];
-	while (openFileDlg(fname)) {
-		Mat src;
-		src = imread(fname, IMREAD_COLOR);
-		std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
-		Mat laplacian0 = convertIntToVec3b(laplacianPyr[0]);
+	openFileDlg(fname);
+	Mat src;
+	src = imread(fname, IMREAD_COLOR);
+	std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
+	Mat laplacian0 = convertIntToVec3b(laplacianPyr[0]);
 
-		cv::resize(laplacian0, laplacian0, cv::Size(256, 256));
+	cv::resize(laplacian0, laplacian0, cv::Size(256, 256));
 
-		imshow("lapace pyr #0", laplacian0);
+	imshow("lapace pyr #0", laplacian0);
 
-		for (int i = 1; i < laplacianPyr.size(); ++i) {
-			std::string x = "laplacian pyr #";
-			x += std::to_string(i);
-			printLaplace(laplacianPyr[i], x);
-			cv::resize(src, src, cv::Size(256, 256));
-		}
-		
-		imshow("image", src);
+	for (int i = 1; i < laplacianPyr.size(); ++i) {
+		std::string x = "laplacian pyr #";
+		x += std::to_string(i);
+		printLaplace(laplacianPyr[i], x);
+		cv::resize(src, src, cv::Size(256, 256));
 	}
+
+	imshow("image", src);
+	waitKey();
 }
 
 Mat_<Vec3b> reconstructImgFromLapPyr(vector<Mat_<Vec3i>> lapPyr) {
@@ -199,46 +202,64 @@ Mat_<Vec3b> reconstructImgFromLapPyr(vector<Mat_<Vec3i>> lapPyr) {
 	return image;
 }
 
-
-float *compute_MAE(Mat_<Vec3b> firstImage, Mat_<Vec3b> secondImage) {
-
-	float *MAE = (float*)calloc(3,sizeof(float));
-	for(int i=0;i<firstImage.rows;i++)
-		for (int j = 0; j < firstImage.cols; j++) {
-			MAE[0] = MAE[0] + abs(firstImage(i, j)[0] - secondImage(i, j)[0]);
-			MAE[1] = MAE[1] + abs(firstImage(i, j)[1] - secondImage(i, j)[1]);
-			MAE[2] = MAE[2] + abs(firstImage(i, j)[2] - secondImage(i, j)[2]);
+Mat_<Vec3i> filter(Mat_<Vec3i> img, float threshold) {
+	Mat_<Vec3i> dst(img.rows, img.cols);
+	for (int i = 0; i < img.rows; i++)
+		for (int j = 0; j < img.cols; j++) {
+			float lenght = abs(sqrt(img(i, j)[0] * img(i, j)[0] + img(i, j)[1] * img(i, j)[1] + img(i, j)[2] * img(i, j)[2]));
+			if (lenght < threshold) {
+				dst(i, j) = 0;
+			}
+			else
+				dst(i, j) = img(i, j);
 		}
-	MAE[0] = MAE[0] / (firstImage.rows * firstImage.cols);
-	MAE[1] = MAE[1] / (firstImage.rows * firstImage.cols);
-	MAE[2] = MAE[2] / (firstImage.rows * firstImage.cols);
 
-	return MAE;
+	return dst;
 }
 
-void testReconstruction(int layers) {
+
+void testFiltrare(int layers, int threshold) {
 	char fname[MAX_PATH];
-	while (openFileDlg(fname)) {
-		Mat src;
-		src = imread(fname, IMREAD_COLOR);
+	openFileDlg(fname);
+	Mat_<Vec3b> src = imread(fname, IMREAD_COLOR);
+	std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
 
-		std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
-		Mat_<Vec3b> rec = reconstructImgFromLapPyr(laplacianPyr);
-		float* MAE = compute_MAE(src, rec);
-		std::cout << MAE[0] << " " << MAE[1] << " " << MAE[2] << endl;
+	//filter pyramid levels
+	std::vector<Mat_<Vec3i>> filteredPyr;
 
-		imshow("Diference", (rec - src) * 10 + 128);
-
-		imshow("reconstructed", rec);
-		imshow("image", src);
-
-		waitKey(0);
+	for (int i = 0; i < laplacianPyr.size(); i++) {
+		filteredPyr.push_back(filter(laplacianPyr[i], threshold));
 	}
+
+
+	//reconstruct image with filtered pyramid
+	Mat_<Vec3b> rec = reconstructImgFromLapPyr(filteredPyr);
+	float mae = compute_mae(src, rec);
+	printf("%f", mae);
+
+
+
+	imshow("Diference", (rec - src) * 10 + 128);
+
+	imshow("reconstructed", rec);
+
+	imshow("image", src);
+	waitKey();
+
+
 }
+
+
 void merge() {
 
-	Mat_<Vec3b> src1 = imread("images/apple.jpg", IMREAD_COLOR);
-	Mat_<Vec3b> src2 = imread("images/orange.jpg", IMREAD_COLOR);
+	char fname1[MAX_PATH];
+	openFileDlg(fname1);
+	Mat_<Vec3b> src1 = imread(fname1, IMREAD_COLOR);
+
+	char fname2[MAX_PATH];
+	openFileDlg(fname2);
+	Mat_<Vec3b> src2 = imread(fname2, IMREAD_COLOR);
+
 
 	Mat_<Vec3b> g1 = src1.clone();
 	Mat_<Vec3b> g2 = src2.clone();
@@ -336,7 +357,7 @@ void merge() {
 
 	imshow("Direct connection", real);
 
-	
+
 	waitKey();
 }
 
@@ -353,7 +374,8 @@ int main()
 		printf(" 1 - Calculate n levels for Gaussian Pyramid .\n");
 		printf(" 2 - Calculate n levels for Laplace Pyramid .\n");
 		printf(" 3 - Reconstruct the image .\n");
-		printf(" 4 - Apple and orange bleending.\n");
+		printf(" 4 - Blending two images.\n");
+		printf(" 5 - Filtered pyramid\n");
 		printf("Option: ");
 		scanf("%d", &op);
 		switch (op)
@@ -373,12 +395,20 @@ int main()
 			scanf("%d", &n);
 			testReconstruction(n);
 			break;
-		case 4: 
+		case 4:
 			merge();
 			break;
-
+		case 5:
+			printf("levels = ");
+			scanf("%d", &n);
+			int threshold;
+			printf("threshold = ");
+			scanf("%d", &threshold);
+			testFiltrare(n, threshold);
+			break;
 		}
 
-	} 	while (op != 0);
+	} while (op != 0);
 	return 0;
 }
+
