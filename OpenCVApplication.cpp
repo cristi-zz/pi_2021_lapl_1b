@@ -216,6 +216,22 @@ Mat_<Vec3i> filter(Mat_<Vec3i> img, float threshold) {
 
 	return dst;
 }
+float compute_mae(Mat_<Vec3b> firstImage, Mat_<Vec3b> secondImage) {
+
+	float* MAE = (float*)calloc(3, sizeof(float));
+	for (int i = 0; i < firstImage.rows; i++)
+		for (int j = 0; j < firstImage.cols; j++) {
+			MAE[0] = MAE[0] + abs(firstImage(i, j)[0] - secondImage(i, j)[0]);
+			MAE[1] = MAE[1] + abs(firstImage(i, j)[1] - secondImage(i, j)[1]);
+			MAE[2] = MAE[2] + abs(firstImage(i, j)[2] - secondImage(i, j)[2]);
+		}
+	MAE[0] = MAE[0] / (firstImage.rows * firstImage.cols);
+	MAE[1] = MAE[1] / (firstImage.rows * firstImage.cols);
+	MAE[2] = MAE[2] / (firstImage.rows * firstImage.cols);
+	float mae = (MAE[0] + MAE[1] + MAE[2]) / 3;
+
+	return mae;
+}
 
 
 void testFiltrare(int layers, int threshold) {
@@ -247,6 +263,26 @@ void testFiltrare(int layers, int threshold) {
 	waitKey();
 
 
+}
+void testReconstruction(int layers) {
+	char fname[MAX_PATH];
+	while (openFileDlg(fname)) {
+		Mat src;
+		src = imread(fname, IMREAD_COLOR);
+
+		std::vector<Mat_<Vec3i>> laplacianPyr = genLaplace(src, layers);
+		Mat_<Vec3b> rec = reconstructImgFromLapPyr(laplacianPyr);
+
+		float mae = compute_mae(src, rec);
+		printf("%f", mae);
+
+		imshow("Diference", (rec - src) * 10 + 128);
+
+		imshow("reconstructed", rec);
+		imshow("image", src);
+
+		waitKey(0);
+	}
 }
 
 
@@ -411,4 +447,3 @@ int main()
 	} while (op != 0);
 	return 0;
 }
-
